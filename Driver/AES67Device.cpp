@@ -1,0 +1,478 @@
+//
+// AES67Device.cpp
+// AES67 macOS Driver - Build #9
+// Core Audio device implementation
+//
+
+#include "AES67Device.h"
+#include "AES67IOHandler.h"
+#include "SDPParser.h"
+#include "DebugLog.h"
+#include "../NetworkEngine/DeviceChannels.hpp"
+#include <CoreAudio/AudioServerPlugIn.h>
+#include <utility>
+
+namespace AES67 {
+
+// Helper to create initialized ring buffer array
+namespace {
+    template<size_t... Is>
+    auto MakeRingBufferArray(size_t bufferSize, std::index_sequence<Is...>) {
+        return std::array<SPSCRingBuffer<float>, sizeof...(Is)>{
+            ((void)Is, SPSCRingBuffer<float>(bufferSize))...
+        };
+    }
+
+    auto MakeRingBufferArray(size_t bufferSize) {
+        return MakeRingBufferArray(bufferSize, std::make_index_sequence<AES67Device::kNumChannels>{});
+    }
+}
+
+AES67Device::AES67Device(std::shared_ptr<aspl::Context> context)
+    : aspl::Device(context, aspl::DeviceParameters{
+        .Name = "AES67 Device",
+        .Manufacturer = "AES67 Driver",
+        .DeviceUID = "com.aes67.driver.device",
+        .ModelUID = "com.aes67.driver.model",
+        .CanBeDefault = true,
+        .CanBeDefaultForSystemSounds = false,
+        .SampleRate = 48000,
+        .ChannelCount = 32
+    })
+    // Initialize ring buffers sized for maximum supported sample rate (384kHz)
+    // This ensures buffers are always large enough regardless of sample rate changes
+    // Power-of-2 sizing: 384kHz @ 3ms = 1152 samples → 2048 (next power of 2)
+    , inputBuffers_(MakeRingBufferArray(
+          CalculateRingBufferSize(384000.0)))  // Max sample rate
+    , outputBuffers_(MakeRingBufferArray(
+          CalculateRingBufferSize(384000.0)))  // Max sample rate
+{
+    AES67_LOG("AES67Device constructor: Starting initialization");
+    const Float64 initialSampleRate = currentSampleRate_.load();
+    const size_t ringBufferSize = CalculateRingBufferSize(384000.0);
+    AES67_LOGF("AES67Device: Initial sample rate = %.0f Hz", initialSampleRate);
+    AES67_LOGF("AES67Device: Ring buffer size = %zu samples (sized for max 384kHz)",
+               ringBufferSize);
+    AES67_LOGF("AES67Device: Buffer latency @ %.0f Hz = %.2f ms",
+               initialSampleRate,
+               (ringBufferSize * 1000.0) / initialSampleRate);
+
+    // NOTE: Cannot call InitializeStreams() here because shared_from_this()
+    // won't work until the shared_ptr is fully constructed
+    // InitializeStreams() will be called from Initialize() method
+
+    AES67_LOG("AES67Device constructor: Basic initialization complete");
+}
+
+void AES67Device::Initialize() {
+    AES67_LOG("AES67Device::Initialize() called");
+
+    auto counts = readDeviceChannels(StreamConfigManager::findExistingConfig());
+    if (counts) { inputChannelCount_ = counts->input; outputChannelCount_ = counts->output; }
+    // Invalid settings leave a silent default-sized device; loadConfig rejects them.
+
+    // Initialize streams
+    AES67_LOG("AES67Device: Calling InitializeStreams()");
+    InitializeStreams();
+
+    // Create RT-safe interface (compile-time boundary for IO handler)
+    // Must be created before InitializeIOHandler() so it can be passed in.
+    AES67_LOG("AES67Device: Creating RTSafeStreamInterface");
+    rtInterface_ = std::make_unique<RTSafeStreamInterface>(
+        inputBuffers_,
+        outputBuffers_,
+        inputUnderruns_,
+        outputUnderruns_,
+        ioRunning_
+    );
+    AES67_LOG("AES67Device: RTSafeStreamInterface created successfully");
+
+    // Initialize IO handler (uses RT-safe interface)
+    AES67_LOG("AES67Device: Calling InitializeIOHandler()");
+    InitializeIOHandler();
+
+    // Initialize Stream Manager (manages all AES67 network streams)
+    AES67_LOG("AES67Device: Creating StreamManager");
+    streamManager_ = std::make_unique<StreamManager>(inputBuffers_, outputBuffers_);
+    AES67_LOG("AES67Device: StreamManager created successfully");
+
+    // Set device sample rate in StreamManager
+    streamManager_->setDeviceSampleRate(currentSampleRate_.load());
+    AES67_LOGF("AES67Device: StreamManager sample rate set to %.0f Hz", currentSampleRate_.load());
+
+    // Load saved stream configurations from disk
+    AES67_LOG("AES67Device: Attempting to load saved stream configurations");
+    bool loadedSavedStreams = streamManager_->loadSavedStreams();
+
+    if (!loadedSavedStreams) {
+        AES67_LOG("AES67Device: No configured streams; input remains silent until a valid RX configuration is installed");
+    }
+
+    AES67_LOG("AES67Device::Initialize() complete");
+}
+
+AES67Device::~AES67Device() {
+    // Deactivate streams directly rather than calling StopIO() (which requires
+    // framework context). This is safe in the destructor.
+    if (inputStream_) {
+        inputStream_->SetIsActive(false);
+    }
+    if (outputStream_) {
+        outputStream_->SetIsActive(false);
+    }
+    ioRunning_.store(false);
+    stopIOMonitor();
+}
+
+void AES67Device::startIOMonitor() {
+    stopIOMonitor();
+    ioStarted_ = std::chrono::steady_clock::now();
+    ioStartInputUnderruns_ = inputUnderruns_.load();
+    ioStartOutputOverruns_ = outputUnderruns_.load();
+    ioMonitorRunning_.store(true);
+    ioMonitor_ = std::thread([this]() {
+        uint64_t lastIn = ioStartInputUnderruns_, lastOut = ioStartOutputOverruns_;
+        auto next = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        while (ioMonitorRunning_.load()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            if (std::chrono::steady_clock::now() < next) continue;
+            next += std::chrono::seconds(10);
+            const uint64_t in = inputUnderruns_.load(), out = outputUnderruns_.load();
+            // Only when something happened: an input underrun is a gap or click
+            // in what the audio app records, an overrun drops audio it plays.
+            if (in != lastIn || out != lastOut) {
+                AES67_LOGF("CoreAudio I/O last 10 s: input underruns +%llu, output overruns +%llu, %u client(s)",
+                           (unsigned long long)(in - lastIn), (unsigned long long)(out - lastOut), ioClients_.load());
+            }
+            lastIn = in; lastOut = out;
+        }
+    });
+}
+
+void AES67Device::stopIOMonitor() {
+    ioMonitorRunning_.store(false);
+    if (ioMonitor_.joinable()) {
+        ioMonitor_.join();
+    }
+}
+
+void AES67Device::InitializeStreams() {
+    AES67_LOG("InitializeStreams: Creating input stream (Network → Core Audio)");
+    // Create input stream (Network → Core Audio)
+    aspl::StreamParameters inputParams;
+    inputParams.Direction = aspl::Direction::Input;
+    inputParams.StartingChannel = 1;
+    inputParams.Format.mSampleRate = currentSampleRate_.load();
+    inputParams.Format.mFormatID = kAudioFormatLinearPCM;
+    inputParams.Format.mFormatFlags = kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked;
+    inputParams.Format.mBitsPerChannel = 32;
+    inputParams.Format.mChannelsPerFrame = inputChannelCount_;
+    inputParams.Format.mBytesPerFrame = inputChannelCount_ * sizeof(float);
+    inputParams.Format.mFramesPerPacket = 1;
+    inputParams.Format.mBytesPerPacket = inputParams.Format.mBytesPerFrame;
+
+    AES67_LOGF("InitializeStreams: Input stream - %u channels @ %.0f Hz",
+               inputChannelCount_, currentSampleRate_.load());
+
+    inputStream_ = std::make_shared<aspl::Stream>(
+        GetContext(),
+        std::static_pointer_cast<aspl::Device>(shared_from_this()),
+        inputParams
+    );
+    AES67_LOG("InitializeStreams: Input stream created, adding to device");
+    AddStreamAsync(inputStream_);
+    AES67_LOG("InitializeStreams: Input stream added successfully");
+
+    aspl::StreamParameters outputParams = inputParams;
+    outputParams.Direction = aspl::Direction::Output;
+    outputParams.Format.mChannelsPerFrame = outputChannelCount_;
+    outputParams.Format.mBytesPerFrame = outputChannelCount_ * sizeof(float);
+    outputParams.Format.mBytesPerPacket = outputParams.Format.mBytesPerFrame;
+    outputStream_ = std::make_shared<aspl::Stream>(
+        GetContext(),
+        std::static_pointer_cast<aspl::Device>(shared_from_this()),
+        outputParams
+    );
+    AddStreamAsync(outputStream_);
+    AES67_LOG("InitializeStreams: configured output stream added");
+
+    AES67_LOG("InitializeStreams: Complete");
+}
+
+void AES67Device::InitializeIOHandler() {
+    AES67_LOG("InitializeIOHandler: Creating AES67IOHandler with RTSafeStreamInterface");
+    ioHandler_ = std::make_shared<AES67IOHandler>(
+        *rtInterface_,
+        inputChannelCount_,         // Cache channel count for RT-safe access
+        sizeof(Float32),        // Cache bytes per sample for RT-safe access
+        outputChannelCount_
+    );
+    AES67_LOG("InitializeIOHandler: IOHandler created successfully");
+
+    // Register IO handler with device
+    AES67_LOG("InitializeIOHandler: Registering IOHandler with device");
+    SetIOHandler(ioHandler_);
+    AES67_LOG("InitializeIOHandler: Complete");
+}
+
+Float64 AES67Device::GetSampleRate() const {
+    return currentSampleRate_.load();
+}
+
+OSStatus AES67Device::SetSampleRate(Float64 sampleRate) {
+    // Validate sample rate
+    bool isValid = false;
+    for (auto validRate : kSupportedSampleRates) {
+        if (std::abs(sampleRate - validRate) < 0.1) {
+            isValid = true;
+            break;
+        }
+    }
+
+    if (!isValid) {
+        return kAudioHardwareUnsupportedOperationError;
+    }
+
+    // Check if IO is running - sample rate cannot be changed during IO
+    if (ioRunning_.load()) {
+        AES67_LOG("SetSampleRate: ERROR - Cannot change sample rate while IO is running");
+        return kAudioHardwareBadObjectError;
+    }
+
+    // Log the sample rate change
+    AES67_LOGF("SetSampleRate: Changing from %.0f Hz to %.0f Hz",
+               currentSampleRate_.load(), sampleRate);
+
+    const size_t ringBufferSize = inputBuffers_[0].capacity();
+    AES67_LOGF("SetSampleRate: Ring buffer size = %zu samples (%.2f ms @ %.0f Hz)",
+               ringBufferSize,
+               (ringBufferSize * 1000.0) / sampleRate,
+               sampleRate);
+
+    // Check if buffer size would need to change (for diagnostic purposes)
+    const size_t idealBufferSize = CalculateRingBufferSize(sampleRate);
+    if (idealBufferSize != ringBufferSize) {
+        AES67_LOGF("SetSampleRate: NOTE - Ideal buffer size for %.0f Hz would be %zu samples",
+                   sampleRate, idealBufferSize);
+        AES67_LOG("SetSampleRate: Using fixed buffer sized for maximum sample rate (384kHz)");
+    }
+
+    // Update current sample rate
+    currentSampleRate_.store(sampleRate);
+
+    // Update StreamManager's sample rate
+    if (streamManager_) {
+        streamManager_->setDeviceSampleRate(sampleRate);
+        AES67_LOG("SetSampleRate: StreamManager sample rate updated");
+    }
+
+    // Update stream formats
+    if (inputStream_) {
+        auto format = inputStream_->GetPhysicalFormat();
+        format.mSampleRate = sampleRate;
+        inputStream_->SetPhysicalFormatAsync(format);
+    }
+    if (outputStream_) {
+        auto format = outputStream_->GetPhysicalFormat();
+        format.mSampleRate = sampleRate;
+        outputStream_->SetPhysicalFormatAsync(format);
+    }
+
+    AES67_LOG("SetSampleRate: Complete");
+
+    return kAudioHardwareNoError;
+}
+
+std::vector<AudioValueRange> AES67Device::GetAvailableSampleRates() const {
+    std::vector<AudioValueRange> ranges;
+    for (auto rate : kSupportedSampleRates) {
+        ranges.push_back({rate, rate});
+    }
+    return ranges;
+}
+
+UInt32 AES67Device::GetBufferSize() const {
+    return currentBufferSize_.load();
+}
+
+OSStatus AES67Device::SetBufferSize(UInt32 bufferSize) {
+    // Validate buffer size
+    bool isValid = false;
+    for (auto validSize : kSupportedBufferSizes) {
+        if (bufferSize == validSize) {
+            isValid = true;
+            break;
+        }
+    }
+
+    if (!isValid) {
+        return kAudioHardwareUnsupportedOperationError;
+    }
+
+    // Update current buffer size
+    currentBufferSize_.store(bufferSize);
+
+    return kAudioHardwareNoError;
+}
+
+std::vector<UInt32> AES67Device::GetAvailableBufferSizes() const {
+    return std::vector<UInt32>(kSupportedBufferSizes.begin(), kSupportedBufferSizes.end());
+}
+
+std::string AES67Device::GetDeviceName() const {
+    return "AES67 Device";
+}
+
+std::string AES67Device::GetDeviceManufacturer() const {
+    return "AES67 Driver";
+}
+
+std::string AES67Device::GetDeviceUID() const {
+    return "com.aes67.driver.device";
+}
+
+OSStatus AES67Device::StartIOImpl(UInt32 clientID, UInt32 startCount) {
+    ioClients_.store(startCount + 1);
+    AES67_LOGF("CoreAudio I/O started by client %u, %u client(s) active", clientID, startCount + 1);
+    if (startCount == 1) {
+        // Each client reads the input rings destructively, so two recording
+        // clients split the audio between them.
+        AES67_LOG("CoreAudio I/O: more than one client is using the device; input audio is shared between them and may sound broken");
+    }
+    // startCount == 0 means first client starting IO (device transitions to running)
+    if (startCount == 0) {
+        startIOMonitor();
+        // Activate streams
+        if (inputStream_) {
+            inputStream_->SetIsActive(true);
+        }
+        if (outputStream_) {
+            outputStream_->SetIsActive(true);
+        }
+
+        ioRunning_.store(true);
+
+        // Start RTP network threads now that a client needs audio
+        if (streamManager_) {
+            streamManager_->setIOActive(true);
+        }
+    }
+
+    return aspl::Device::StartIOImpl(clientID, startCount);
+}
+
+OSStatus AES67Device::StopIOImpl(UInt32 clientID, UInt32 startCount) {
+    ioClients_.store(startCount);
+    AES67_LOGF("CoreAudio I/O stopped by client %u, %u client(s) remaining", clientID, startCount);
+    // startCount == 0 means last client stopped IO (device transitions to not running)
+    if (startCount == 0) {
+        stopIOMonitor();
+        const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - ioStarted_).count();
+        AES67_LOGF("CoreAudio I/O ended after %lld s: input underruns %llu, output overruns %llu",
+                   (long long)seconds, (unsigned long long)(inputUnderruns_.load() - ioStartInputUnderruns_),
+                   (unsigned long long)(outputUnderruns_.load() - ioStartOutputOverruns_));
+        // Deactivate streams
+        if (inputStream_) {
+            inputStream_->SetIsActive(false);
+        }
+        if (outputStream_) {
+            outputStream_->SetIsActive(false);
+        }
+
+        // Stop RTP network threads — no client needs audio anymore
+        if (streamManager_) {
+            streamManager_->setIOActive(false);
+        }
+
+        ioRunning_.store(false);
+    }
+
+    return aspl::Device::StopIOImpl(clientID, startCount);
+}
+
+void AES67Device::ResetStatistics() {
+    inputUnderruns_.store(0);
+    outputUnderruns_.store(0);
+}
+
+OSStatus AES67Device::OnSetSampleRate(Float64 sampleRate) {
+    return SetSampleRate(sampleRate);
+}
+
+OSStatus AES67Device::OnSetBufferSize(UInt32 bufferSize) {
+    return SetBufferSize(bufferSize);
+}
+
+size_t AES67Device::CalculateRingBufferSize(Float64 sampleRate, double latencyMs) {
+    // Calculate ring buffer size for desired latency
+    // Formula: samples = (sampleRate × latencyMs) / 1000
+    //
+    // Examples (with 3ms latency):
+    //   48kHz @ 3ms = 144 samples → 256 (rounded to power of 2)
+    //   96kHz @ 3ms = 288 samples → 512
+    //   192kHz @ 3ms = 576 samples → 1024
+    //   384kHz @ 3ms = 1152 samples → 2048
+    //
+    // Minimum 3ms buffer provides adequate tolerance for:
+    // - Network jitter (typical: 0.5-1ms)
+    // - Processing delays (typical: 0.5-1ms)
+    // - Scheduling variations (typical: 0.5-1ms)
+    //
+    // Power-of-2 sizing enables efficient modulo operations
+
+    // Calculate minimum size based on latency requirement
+    const size_t minSize = static_cast<size_t>(
+        (sampleRate * latencyMs) / 1000.0
+    );
+
+    // Round up to next power of 2 for efficient modulo operations
+    size_t size = 1;
+    while (size < minSize) {
+        size <<= 1;
+    }
+
+    // Enforce absolute minimum (512 samples = 10.6ms @ 48kHz, 1.3ms @ 384kHz)
+    constexpr size_t kMinRingBufferSize = 512;
+
+    // Enforce maximum to prevent excessive memory (8192 samples = 21.3ms @ 384kHz)
+    // At 128 channels × 4 bytes/sample: 8192 × 128 × 4 = 4MB per buffer direction
+    constexpr size_t kMaxRingBufferSize = 8192;
+
+    size = std::max(size, kMinRingBufferSize);
+    size = std::min(size, kMaxRingBufferSize);
+
+    return size;
+}
+
+void AES67Device::ResizeRingBuffers(Float64 sampleRate) {
+    // IMPORTANT: Ring buffers cannot be resized after construction because
+    // SPSCRingBuffer has deleted copy/move assignment operators.
+    //
+    // The ring buffers are sized based on sample rate at construction time.
+    // If sample rate needs to change significantly (requiring different buffer size),
+    // the device must be torn down and recreated.
+    //
+    // Current approach: Ring buffers are sized for worst-case (highest sample rate)
+    // to avoid needing to resize. The buffer size calculation uses power-of-2 sizing,
+    // so adjacent sample rates often share the same buffer size:
+    //   - 44.1/48 kHz → 512 samples
+    //   - 88.2/96 kHz → 512 samples
+    //   - 176.4/192 kHz → 1024 samples
+    //   - 352.8/384 kHz → 2048 samples
+    //
+    // This function logs a warning if sample rate change requires buffer resize.
+
+    const size_t newSize = CalculateRingBufferSize(sampleRate);
+    const size_t currentSize = inputBuffers_[0].capacity();  // All buffers same size
+
+    if (newSize != currentSize) {
+        AES67_LOGF("ResizeRingBuffers: WARNING - Sample rate change from %.0f Hz to %.0f Hz",
+                   currentSampleRate_.load(), sampleRate);
+        AES67_LOGF("ResizeRingBuffers: Would require buffer resize: %zu → %zu samples",
+                   currentSize, newSize);
+        AES67_LOG("ResizeRingBuffers: Ring buffers CANNOT be resized after construction");
+        AES67_LOG("ResizeRingBuffers: Continuing with existing buffer size - may cause underruns");
+    }
+}
+
+} // namespace AES67

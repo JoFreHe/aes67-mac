@@ -1,0 +1,203 @@
+//
+// AES67Device.h
+// AES67 macOS Driver - Build #1
+// Core Audio device implementation using libASPL
+// 128-channel input/output AudioServerPlugIn
+//
+
+#pragma once
+
+#include "../Shared/Types.h"
+#include "../Shared/RingBuffer.hpp"
+#include "../NetworkEngine/StreamManager.h"
+#include "../NetworkEngine/RTSafeStreamInterface.h"
+#include <aspl/Device.hpp>
+#include <aspl/Stream.hpp>
+#include <aspl/Context.hpp>
+#include <memory>
+#include <array>
+#include <atomic>
+#include <chrono>
+#include <thread>
+
+namespace AES67 {
+
+class AES67IOHandler;
+
+//
+// AES67 Audio Device
+//
+// 128-channel bidirectional Core Audio device
+// Integrates with macOS Core Audio via AudioServerPlugIn (libASPL)
+//
+class AES67Device : public aspl::Device {
+public:
+    static constexpr size_t kNumChannels = 128; // Internal ring-buffer capacity
+    static constexpr size_t kInputChannels = 32;
+    static constexpr size_t kOutputChannels = 32;
+
+    // Supported sample rates
+    static constexpr std::array<Float64, 1> kSupportedSampleRates = {48000.0};
+
+    // Supported buffer sizes (in samples)
+    static constexpr std::array<UInt32, 8> kSupportedBufferSizes = {
+        16, 32, 48, 64, 128, 192, 288, 480
+    };
+
+    //
+    // Constructor
+    //
+    explicit AES67Device(std::shared_ptr<aspl::Context> context);
+    ~AES67Device();
+
+    // Initialize device (must be called after construction)
+    void Initialize();
+
+    //
+    // Device Configuration
+    //
+
+    // Get/Set sample rate
+    Float64 GetSampleRate() const;
+    Float64 GetNominalSampleRate() const override { return GetSampleRate(); }
+    OSStatus SetSampleRate(Float64 sampleRate);
+
+    // Get available sample rates
+    std::vector<AudioValueRange> GetAvailableSampleRates() const override;
+
+    // Get/Set buffer size
+    UInt32 GetBufferSize() const;
+    OSStatus SetBufferSize(UInt32 bufferSize);
+
+    // Get available buffer sizes
+    std::vector<UInt32> GetAvailableBufferSizes() const;
+
+    //
+    // Device Information
+    //
+
+    std::string GetDeviceName() const;
+    std::string GetDeviceManufacturer() const;
+    std::string GetDeviceUID() const override;
+
+    UInt32 GetPreferredChannelCount() const override { return inputChannelCount_ < outputChannelCount_ ? inputChannelCount_ : outputChannelCount_; }
+    std::array<UInt32, 2> GetPreferredChannelsForStereo() const override { return {1, GetPreferredChannelCount() > 1 ? 2u : 1u}; }
+
+    // Get channel count
+    UInt32 GetInputChannelCount() const { return inputChannelCount_; }
+    UInt32 GetOutputChannelCount() const { return outputChannelCount_; }
+
+    //
+    // Stream Access
+    //
+
+    // Get input/output streams
+    std::shared_ptr<aspl::Stream> GetInputStream() const { return inputStream_; }
+    std::shared_ptr<aspl::Stream> GetOutputStream() const { return outputStream_; }
+
+    //
+    // Ring Buffer Access (for NetworkEngine)
+    //
+
+    using DeviceChannelBuffers = std::array<SPSCRingBuffer<float>, kNumChannels>;
+
+    DeviceChannelBuffers& GetInputBuffers() { return inputBuffers_; }
+    DeviceChannelBuffers& GetOutputBuffers() { return outputBuffers_; }
+
+    //
+    // RT-Safe Interface Access
+    //
+
+    // Returns the RT-safe interface for use by AES67IOHandler.
+    // The interface is created during Initialize() and is valid for the
+    // lifetime of this device. Only pass this to RT-safe code paths.
+    RTSafeStreamInterface* GetRTInterface() { return rtInterface_.get(); }
+    const RTSafeStreamInterface* GetRTInterface() const { return rtInterface_.get(); }
+
+    //
+    // Stream Manager Access
+    //
+
+    StreamManager* GetStreamManager() { return streamManager_.get(); }
+    const StreamManager* GetStreamManager() const { return streamManager_.get(); }
+
+    //
+    // Control
+    //
+
+    // Start/Stop IO (overrides from aspl::Device)
+    OSStatus StartIOImpl(UInt32 clientID, UInt32 startCount) override;
+    OSStatus StopIOImpl(UInt32 clientID, UInt32 startCount) override;
+
+    //
+    // Statistics
+    //
+
+    uint64_t GetInputUnderrunCount() const { return inputUnderruns_.load(); }
+    uint64_t GetOutputUnderrunCount() const { return outputUnderruns_.load(); }
+    void ResetStatistics();
+
+private:
+    OSStatus SetNominalSampleRateImpl(Float64 sampleRate) override { return SetSampleRate(sampleRate); }
+    // Internal handlers
+    OSStatus OnSetSampleRate(Float64 sampleRate);
+    OSStatus OnSetBufferSize(UInt32 bufferSize);
+
+    // Initialize streams and IO handler
+    void InitializeStreams();
+    void InitializeIOHandler();
+
+    // Calculate optimal ring buffer size based on sample rate
+    // Returns size for desired latency (default: 3ms for network jitter tolerance)
+    // Result is rounded up to power of 2 for efficient modulo operations
+    static size_t CalculateRingBufferSize(Float64 sampleRate, double latencyMs = 3.0);
+
+    // Ring buffers for audio data
+    // Network threads write to input buffers, read from output buffers
+    // Core Audio thread reads from input buffers, writes to output buffers
+    DeviceChannelBuffers inputBuffers_;   // Network → CoreAudio
+    DeviceChannelBuffers outputBuffers_;  // CoreAudio → Network
+
+    // Streams
+    std::shared_ptr<aspl::Stream> inputStream_;
+    std::shared_ptr<aspl::Stream> outputStream_;
+
+    // IO Handler
+    std::shared_ptr<AES67IOHandler> ioHandler_;
+
+    // Stream Manager (manages all AES67 network streams)
+    std::unique_ptr<StreamManager> streamManager_;
+
+    // RT-safe interface (compile-time boundary for IO handler)
+    // Created during Initialize(), references inputBuffers_/outputBuffers_/atomics
+    std::unique_ptr<RTSafeStreamInterface> rtInterface_;
+
+    // Immutable after initialization; CoreAudio requires a restart for changes.
+    UInt32 inputChannelCount_{32}, outputChannelCount_{32};
+
+    // Current configuration
+    std::atomic<Float64> currentSampleRate_{48000.0};
+    std::atomic<UInt32> currentBufferSize_{64};
+
+    // State
+    std::atomic<bool> ioRunning_{false};
+
+    // Statistics
+    std::atomic<uint64_t> inputUnderruns_{0};
+    std::atomic<uint64_t> outputUnderruns_{0};
+
+    // I/O monitor: logs CoreAudio-side underruns/overruns every 10 s while I/O
+    // runs; the real-time callbacks only count.
+    void startIOMonitor();
+    void stopIOMonitor();
+    std::thread ioMonitor_;
+    std::atomic<bool> ioMonitorRunning_{false};
+    std::atomic<UInt32> ioClients_{0};
+    std::chrono::steady_clock::time_point ioStarted_{};
+    uint64_t ioStartInputUnderruns_ = 0, ioStartOutputOverruns_ = 0;
+
+    // Resize ring buffers to accommodate new sample rate
+    void ResizeRingBuffers(Float64 sampleRate);
+};
+
+} // namespace AES67

@@ -1,0 +1,323 @@
+# CMakeLists.txt
+# AES67 macOS Driver - Build #4
+# Cross-platform build configuration
+
+cmake_minimum_required(VERSION 3.20)
+
+# Read version from VERSION.txt
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION.txt" VERSION_STRING)
+string(STRIP "${VERSION_STRING}" VERSION_STRING)
+string(REGEX MATCH "([0-9]+)\\.([0-9]+)\\.([0-9]+)-build\\.([0-9]+)" _ "${VERSION_STRING}")
+set(VERSION_MAJOR ${CMAKE_MATCH_1})
+set(VERSION_MINOR ${CMAKE_MATCH_2})
+set(VERSION_PATCH ${CMAKE_MATCH_3})
+set(VERSION_BUILD ${CMAKE_MATCH_4})
+
+# Deployment settings must precede compiler detection and apply to dependencies.
+set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
+set(CMAKE_OSX_ARCHITECTURES "x86_64;arm64" CACHE STRING "Build architectures")
+project(AES67Driver
+    VERSION ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}
+    LANGUAGES CXX OBJCXX
+    DESCRIPTION "Experimental AES67 32x32 audio interface for macOS"
+)
+
+message(STATUS "AES67 Driver Build #${VERSION_BUILD}")
+
+# C++ Standard
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+# Build type
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release)
+endif()
+
+# macOS specific settings
+if(APPLE)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
+    set(CMAKE_OSX_ARCHITECTURES "x86_64;arm64" CACHE STRING "Build architectures")
+
+    # Enable Hardened Runtime for notarization
+    set(CMAKE_XCODE_ATTRIBUTE_ENABLE_HARDENED_RUNTIME YES)
+
+    # Code signing (set to "-" for ad-hoc signing during development)
+    set(CMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "-" CACHE STRING "Code signing identity")
+    set(CMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM "" CACHE STRING "Development team ID")
+endif()
+
+# Compiler flags
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang")
+    add_compile_options("-ffile-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}=." "-fdebug-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}=.")
+    add_compile_options(
+        -Wall -Wextra -Wpedantic
+        -Wno-unused-parameter
+        -Wno-missing-field-initializers
+    )
+    # Debug flags
+    set(CMAKE_CXX_FLAGS_DEBUG "-g -O0")
+    # Release flags
+    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
+endif()
+
+# ============================================================================
+# Dependencies
+# ============================================================================
+
+# Build the pinned dependency from source for BOTH architectures; do not link a
+# Homebrew arm64-only archive into a Universal2 driver.
+if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/libASPL/include/aspl/Plugin.hpp")
+    message(FATAL_ERROR "Missing external/libASPL. See scripts/build-mac.sh")
+endif()
+set(ASPL_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/libASPL/include")
+set(BUILD_TESTING OFF CACHE BOOL "Build upstream ASPL tests" FORCE)
+add_subdirectory(external/libASPL ASPL EXCLUDE_FROM_ALL)
+set(ASPL_LIBRARY libASPL)
+
+# NOTE: The vendored ptpd C code is NOT used. PTP synchronization is implemented
+# natively in C++17 via PTPSlave.cpp (IEEE 1588 slave-only mode). The vendored
+# ptpd source in NetworkEngine/PTP/vendor/ptpd/ is kept for reference only.
+
+# ============================================================================
+# Shared Library
+# ============================================================================
+
+# Common source files for both driver and tests
+set(SHARED_SOURCES
+    Shared/Types.cpp
+    Shared/Config.cpp
+    Shared/NonBlockingLogger.cpp
+    Shared/ResourceCleanupManager.cpp
+    Shared/ErrorRecoveryManager.cpp
+)
+
+# Driver source files
+set(DRIVER_SOURCES
+    Driver/SDPParser.cpp
+    Driver/AES67Device.cpp
+    Driver/AES67IOHandler.cpp
+    Driver/AudioThreadPriority.cpp
+)
+
+# Network Engine source files
+set(NETWORK_SOURCES
+    NetworkEngine/StreamChannelMapper.cpp
+    NetworkEngine/StreamManager.cpp
+    NetworkEngine/StreamConfig.cpp
+    NetworkEngine/RTP/SimpleRTP.cpp
+    NetworkEngine/RTP/RTPReceiver.cpp
+    NetworkEngine/RTP/RTPTransmitter.cpp
+    NetworkEngine/RTP/LockFreeCircularJitterBuffer.cpp
+    NetworkEngine/RTP/LockFreePacketPool.cpp
+    NetworkEngine/RTP/BufferStatusMonitor.cpp
+    NetworkEngine/PTP/PTPClock.cpp
+    NetworkEngine/PTP/PTPDInterface.cpp
+    NetworkEngine/PTP/PTPSlave.cpp
+    NetworkEngine/PTP/CustomSys.cpp
+    NetworkEngine/PTP/PhaseLockedLoop.cpp
+    NetworkEngine/Resampling/Resampler.cpp
+    NetworkEngine/Resampling/ClockAdjustmentController.cpp
+    NetworkEngine/Resampling/SmoothedPIController.cpp
+    NetworkEngine/Resampling/SampleRateAdapter.cpp
+    NetworkEngine/NetworkUtils.cpp
+    NetworkEngine/NetworkErrorHandler.cpp
+    NetworkEngine/NetworkInterfaceDetection.cpp
+    NetworkEngine/DoPDecoder.cpp
+    NetworkEngine/Discovery/SAPListener.cpp
+    NetworkEngine/Discovery/RTSPClient.cpp
+)
+
+# Combine all C++ sources
+set(ALL_CPP_SOURCES
+    ${SHARED_SOURCES}
+    ${DRIVER_SOURCES}
+    ${NETWORK_SOURCES}
+)
+
+# ============================================================================
+# AudioServerPlugIn Bundle (macOS only)
+# ============================================================================
+
+if(APPLE)
+    # Create driver bundle
+    add_library(AES67Driver MODULE
+        ${ALL_CPP_SOURCES}
+        Driver/PlugInMain.cpp  # AudioServerPlugIn entry point
+    )
+
+    target_include_directories(AES67Driver PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${ASPL_INCLUDE_DIR}
+    )
+
+    target_link_libraries(AES67Driver PRIVATE
+        ${ASPL_LIBRARY}
+        # ptpd_obj disabled - using stub PTP implementation
+        "-framework CoreAudio"
+        "-framework CoreFoundation"
+        "-framework AudioToolbox"
+    )
+
+    # Bundle properties
+    set_target_properties(AES67Driver PROPERTIES
+        BUNDLE TRUE
+        BUNDLE_EXTENSION "driver"
+        MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Driver/Info.plist.in"
+        MACOSX_BUNDLE_BUNDLE_NAME "AES67"
+        MACOSX_BUNDLE_BUNDLE_VERSION "${VERSION_BUILD}"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "com.aes67driver.audiodevice"
+        XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "com.aes67driver.audiodevice"
+        XCODE_ATTRIBUTE_MACOSX_DEPLOYMENT_TARGET "${CMAKE_OSX_DEPLOYMENT_TARGET}"
+        OSX_DEPLOYMENT_TARGET "${CMAKE_OSX_DEPLOYMENT_TARGET}"
+    )
+
+    # Install to standard location
+    install(TARGETS AES67Driver
+        LIBRARY DESTINATION "/Library/Audio/Plug-Ins/HAL"
+        BUNDLE DESTINATION "/Library/Audio/Plug-Ins/HAL"
+    )
+endif()
+
+# ============================================================================
+# Manager App (macOS only)
+# ============================================================================
+
+option(BUILD_MANAGER "Build the macOS configuration app" ON)
+if(APPLE AND BUILD_MANAGER)
+    add_custom_target(ManagerApp ALL
+        COMMAND ${CMAKE_COMMAND} -E env BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/ManagerApp/build.sh
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/ManagerApp
+        COMMENT "Building AES67 Manager App"
+        VERBATIM
+    )
+
+    # Installer target (explicit only — not part of ALL)
+    add_custom_target(installer
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/Installer/build-installer.sh
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/Installer
+        COMMENT "Building .pkg installer"
+        DEPENDS AES67Driver ManagerApp
+        VERBATIM
+    )
+
+    # Install the Manager app to /Applications
+    install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/ManagerApp/AES67Manager.app
+        DESTINATION "/Applications"
+        USE_SOURCE_PERMISSIONS
+    )
+endif()
+
+# ============================================================================
+# Tests
+# ============================================================================
+
+option(BUILD_TESTS "Build unit tests" ON)
+
+if(BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(Tests)
+endif()
+
+# ============================================================================
+# Examples
+# ============================================================================
+
+option(BUILD_EXAMPLES "Build example programs" OFF)
+
+if(BUILD_EXAMPLES)
+    add_subdirectory(Examples)
+endif()
+
+# ============================================================================
+# Tools
+# ============================================================================
+
+option(BUILD_TOOLS "Build test and debugging tools" ON)
+
+if(BUILD_TOOLS)
+    add_subdirectory(Tools)
+    if(APPLE AND BUILD_MANAGER)
+        add_dependencies(ManagerApp AES67Discover AES67TestReceiver)
+    endif()
+endif()
+
+# ============================================================================
+# Documentation
+# ============================================================================
+
+find_package(Doxygen QUIET)
+
+if(DOXYGEN_FOUND)
+    set(DOXYGEN_IN ${CMAKE_CURRENT_SOURCE_DIR}/Docs/Doxyfile.in)
+    set(DOXYGEN_OUT ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile)
+    configure_file(${DOXYGEN_IN} ${DOXYGEN_OUT} @ONLY)
+
+    add_custom_target(docs
+        COMMAND ${DOXYGEN_EXECUTABLE} ${DOXYGEN_OUT}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        COMMENT "Generating API documentation with Doxygen"
+        VERBATIM
+    )
+else()
+    message(STATUS "Doxygen not found — 'make docs' target will not be available")
+endif()
+
+# ============================================================================
+# Installation
+# ============================================================================
+
+# Install README and documentation
+install(FILES
+    README.md
+    VERSION.txt
+    DESTINATION share/doc/AES67Driver
+)
+
+# Install example SDP files
+install(DIRECTORY Docs/Examples/
+    DESTINATION share/doc/AES67Driver/examples
+    FILES_MATCHING PATTERN "*.sdp"
+)
+
+# ============================================================================
+# Package
+# ============================================================================
+
+set(CPACK_PACKAGE_NAME "AES67Driver")
+set(CPACK_PACKAGE_VENDOR "AES67 Driver")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "AES67 Audio Driver for macOS")
+set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}.${VERSION_BUILD}")
+set(CPACK_PACKAGE_VERSION_MAJOR ${VERSION_MAJOR})
+set(CPACK_PACKAGE_VERSION_MINOR ${VERSION_MINOR})
+set(CPACK_PACKAGE_VERSION_PATCH ${VERSION_PATCH})
+
+if(APPLE)
+    set(CPACK_GENERATOR "productbuild")
+    set(CPACK_PACKAGING_INSTALL_PREFIX "/")
+endif()
+
+include(CPack)
+
+# ============================================================================
+# Summary
+# ============================================================================
+
+message(STATUS "")
+message(STATUS "AES67 Driver Configuration:")
+message(STATUS "  Version: ${PROJECT_VERSION} (Build #${VERSION_BUILD})")
+message(STATUS "  Build type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "  C++ compiler: ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
+if(APPLE)
+    message(STATUS "  macOS deployment target: ${CMAKE_OSX_DEPLOYMENT_TARGET}")
+    message(STATUS "  Architectures: ${CMAKE_OSX_ARCHITECTURES}")
+endif()
+message(STATUS "  RTP: SimpleRTP (minimal implementation)")
+message(STATUS "  libASPL: ${ASPL_INCLUDE_DIR}")
+message(STATUS "  PTP: IEEE 1588 slave-only (PTPSlave.cpp, stub fallback available)")
+message(STATUS "  Manager App: ManagerApp target")
+message(STATUS "  Installer: make installer")
+message(STATUS "  Tests: ${BUILD_TESTS}")
+message(STATUS "  Examples: ${BUILD_EXAMPLES}")
+message(STATUS "")

@@ -1,0 +1,108 @@
+# Build directories
+build/
+build-pkg/
+combined-pkg/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+
+# Compiled binaries
+*.driver
+*.app
+*.pkg
+*.dylib
+*.a
+*.o
+/Examples/ChannelMapperDemo
+/Examples/SimpleSDPParse
+/Tests/BenchmarkIOHandler
+/Tests/TestChannelMapper
+/Tests/TestMultiStream
+/Tests/TestPTPClock
+/Tests/TestRTPReceiver
+/Tests/TestRTPTransmitter
+/Tests/TestRingBuffer
+/Tests/TestSDPParser
+/Tests/TestStreamManager
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+install_manifest.txt
+# Generated CMake files accidentally present in the repository root
+/CPackConfig.cmake
+/CPackSourceConfig.cmake
+/CTestTestfile.cmake
+/Makefile
+/Examples/CTestTestfile.cmake
+/Examples/Makefile
+/Tests/CTestTestfile.cmake
+/Tests/Makefile
+/Tests/Testing/
+
+# Xcode
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.xccheckout
+*.moved-aside
+DerivedData/
+*.hmap
+*.ipa
+*.xcuserstate
+project.xcworkspace/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
+
+# Debug logs
+*.log
+/tmp/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Sensitive files (CLAUDE.md contains credentials)
+CLAUDE.md
+.claude/
+
+# Package files
+*.deb
+*.rpm
+*.tar.gz
+*.zip
+
+# Test outputs
+Tests/output/
+Tests/*.log
+
+# Swift build cache
+ManagerApp/.build/
+
+# Serena plugin
+.serena/
+
+# Local build tools, artifacts and dependency checkout
+.build-tools/
+artifacts/
+external/libASPL/
+build-*/
+
+# Local analysis, recordings and machine-specific configuration
+graphify-out/
+*.pcap
+*.pcapng
+.env
+.env.*
+!.env.example

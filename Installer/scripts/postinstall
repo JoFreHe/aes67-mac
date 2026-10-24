@@ -1,0 +1,23 @@
+#!/bin/bash
+set -euo pipefail
+CONFIG='/Library/Application Support/AES67Driver'
+PLIST='/Library/LaunchDaemons/org.communityaudio.aes67.clock.plist'
+/usr/bin/plutil -lint "$PLIST"
+# Fail explicitly rather than report success for a launchd job macOS will refuse.
+# The package builder excludes download metadata; do not disable OS protections here.
+for artifact in "$PLIST" "$CONFIG/AES67ClockService"; do
+  if /usr/bin/xattr -p com.apple.quarantine "$artifact" >/dev/null 2>&1; then
+    echo "AES67 installation blocked: quarantine attribute on $artifact. Rebuild a clean package; see Docs/Clock-Service-Diagnose-DE.md." >&2
+    exit 1
+  fi
+done
+/bin/mkdir -p "$CONFIG"
+/usr/sbin/chown root:wheel "$CONFIG"
+/bin/chmod 755 "$CONFIG"
+/usr/sbin/chown -R root:wheel /Library/Audio/Plug-Ins/HAL/AES67Driver.driver
+/usr/sbin/chown root:wheel "$CONFIG/AES67ClockService" /Library/LaunchDaemons/org.communityaudio.aes67.clock.plist
+/bin/chmod 755 "$CONFIG/AES67ClockService"
+/bin/chmod 644 /Library/LaunchDaemons/org.communityaudio.aes67.clock.plist
+# Intentionally do not unload audio services or alter the user's default device.
+# The installer requests a restart so launchd and CoreAudio both load the new components.
+echo 'Nach der Installation den Mac neu starten. Spätere Einstellungen im AES67 Manager über Änderungen anwenden aktivieren (kurzer CoreAudio-Neustart).'

@@ -1,0 +1,61 @@
+name: macOS package build
+
+# Builds and tests the universal installer on every branch push and attaches it
+# to the workflow run; pull requests show the result as a check on their head
+# commit. Tagged releases are published separately by release-macos.yml.
+on:
+  push:
+    branches:
+      - '**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-macos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-package:
+    runs-on: macos-14
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version
+        shell: bash
+        run: |
+          build="$(tr -d '[:space:]' < VERSION.txt)"
+          version="$(sed -E 's/-build\.[0-9]+$//' <<< "$build")"
+          echo "RELEASE_VERSION=$version" >> "$GITHUB_ENV"
+          echo "ARTIFACT_NAME=AES67-Mac-$build-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+
+      - name: Build universal binaries and run C++ tests
+        run: scripts/build-mac.sh
+
+      - name: Test automatic manager setup
+        run: |
+          result="$(mktemp)"
+          trap 'rm -f "$result"' EXIT
+          ManagerApp/AES67Manager.app/Contents/MacOS/AES67Manager --self-test "$result"
+
+      - name: Test quarantine-safe package staging
+        run: python3 scripts/test-package-quarantine.py
+
+      - name: Package installer, source archive, and checksums
+        run: scripts/package-mac.sh
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: |
+            artifacts/AES67-Mac-${{ env.RELEASE_VERSION }}-universal.pkg
+            artifacts/SHA256SUMS.txt
+            artifacts/GETTING-STARTED.md
+            artifacts/TESTING.md
+            artifacts/TROUBLESHOOTING.md
+            artifacts/Deinstallieren.command
+          if-no-files-found: error
+          retention-days: 14

@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="de">
+<head><meta charset="utf-8"><style>
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:13px;line-height:1.55;padding:12px 18px;color:#202124}
+h1{font-size:20px;margin:0 0 12px}h2{font-size:15px;margin:18px 0 6px}.hinweis{background:#eef5ff;border-left:4px solid #4285f4;padding:10px 13px;margin:14px 0}
+ul{padding-left:22px;margin:6px 0}li{margin:4px 0}code{font-family:ui-monospace,monospace;font-size:12px}
+</style></head>
+<body>
+<h1>Installationshinweise</h1>
+<p>Das Paket installiert diese Komponenten gemeinsam:</p>
+<ul><li><strong>AES67 Manager</strong> unter <code>/Applications/AES67Manager.app</code></li><li>CoreAudio-Treiber unter <code>/Library/Audio/Plug-Ins/HAL/</code></li><li>PTP-Clock-Dienst und Hilfsprogramme</li></ul>
+<p>Die Systemkomponenten benötigen Administratorrechte. Nach Abschluss den Mac neu starten, damit CoreAudio den Treiber lädt und macOS den Clock-Dienst startet. Die Installation ändert weder die aktuelle Tonausgabe noch die X32-Einstellungen.</p>
+<h2>Nach dem Neustart</h2>
+<ol><li>AES67 Manager im Ordner „Programme“ öffnen.</li><li>Ethernet-Anschluss und Profil 4×4, 8×8 oder 16×16 wählen. Die App bereitet Mac-Sender automatisch vor und sucht X32-Empfangsquellen im Hintergrund. Gefundene Quellen einmal auswählen. Gespeicherte Konfigurationen eines Updates bleiben erhalten.</li><li>„Änderungen anwenden …“ wählen. Der Manager startet dafür nur CoreAudio neu (kurze Unterbrechung aller Audioverbindungen), kein erneuter Mac-Neustart.</li><li>Im Audio-MIDI-Setup prüfen, ob „AES67 Device“ mit den gewählten Kanalzahlen erscheint.</li></ol>
+<div class="hinweis">Wenn macOS das lokal gebaute, nicht von Apple notarisiert Paket blockiert, die Freigabe für dieses Paket in „Systemeinstellungen → Datenschutz &amp; Sicherheit“ prüfen.</div>
+<h2>Voraussetzungen und Grenzen</h2>
+<ul><li>macOS 11 Big Sur oder neuer; Intel und Apple Silicon.</li><li>X-DANTE muss AES67 unterstützen und entsprechend eingerichtet sein.</li><li>Dante Controller, X32-Routing und Clock-Geber werden nicht durch den Manager ersetzt.</li><li>Diese Testversion wurde noch nicht an der konkreten X32/X-DANTE-Hardware validiert.</li></ul>
+</body></html>

@@ -1,0 +1,12 @@
+#!/bin/bash
+set -euo pipefail
+OS_MAJOR="$(/usr/bin/sw_vers -productVersion | /usr/bin/cut -d. -f1)"
+if [ "$OS_MAJOR" -lt 11 ]; then echo 'macOS 11 Big Sur oder neuer erforderlich.' >&2; exit 1; fi
+TARGET="${3:-/}"
+[ "$TARGET" = / ] || { echo 'Bitte auf dem gestarteten System installieren.' >&2; exit 1; }
+CONFIG='/Library/Application Support/AES67Driver'
+[ ! -L "$CONFIG" ] || { echo 'Konfigurationspfad darf kein Symlink sein.' >&2; exit 1; }
+if [ -e /Library/Audio/Plug-Ins/HAL/AES67Driver.driver ]; then
+  /bin/mkdir -p "$CONFIG/Backups"
+  /usr/bin/ditto /Library/Audio/Plug-Ins/HAL/AES67Driver.driver "$CONFIG/Backups/AES67Driver-$(/bin/date +%Y%m%d-%H%M%S).driver"
+fi
