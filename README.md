@@ -25,7 +25,7 @@ These are field-test observations, not manufacturer certification or a guarantee
 
 ## Install
 
-Download `AES67-Mac-<version>-universal.pkg` from [Releases](https://github.com/JoFreHe/aes67-mac/releases), when available. Install outside an active audio session: installation and applying configuration restart CoreAudio and interrupt audio on the Mac.
+Download `AES67-Mac-0.2.11-universal.pkg` and `SHA256SUMS` from the [v0.2.11 release assets](https://github.com/JoFreHe/aes67-mac/releases/tag/v0.2.11). Verify the package checksum and follow the macOS first-open steps in [Install the release package](Docs/Getting-Started.md#install-the-release-package). The package is unsigned; included programs are ad-hoc signed and not Apple-notarized. Install outside an active audio session because installation and applying configuration restart CoreAudio and interrupt audio on the Mac.
 
 The installer package is unsigned. Included programs are ad-hoc signed, not Apple-notarized. Administrator access is required. Follow [Getting started](Docs/Getting-Started.md) for setup and [Troubleshooting](Docs/Troubleshooting.md) for diagnostics.
 
