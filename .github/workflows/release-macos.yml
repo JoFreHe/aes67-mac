@@ -60,5 +60,5 @@ jobs:
             artifacts/TESTING.md \
             artifacts/TROUBLESHOOTING.md \
             artifacts/Deinstallieren.command \
-            --prerelease --verify-tag --generate-notes \
-            --title "AES67 Mac $RELEASE_VERSION — experimenteller Testbuild"
+            --verify-tag --generate-notes \
+            --title "AES67 Mac $RELEASE_VERSION"

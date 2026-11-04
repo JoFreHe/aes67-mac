@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">AES67 Mac social preview</title>
+  <desc id="desc">AES67 Mac, a network audio driver and manager for macOS.</desc>
+  <defs>
+    <linearGradient id="bg" x2="1" y2="1">
+      <stop stop-color="#101d2d"/>
+      <stop offset="1" stop-color="#07111e"/>
+    </linearGradient>
+    <linearGradient id="line" x2="1">
+      <stop stop-color="#6de3d4" stop-opacity="0"/>
+      <stop offset=".42" stop-color="#6de3d4"/>
+      <stop offset="1" stop-color="#6de3d4" stop-opacity="0"/>
+    </linearGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#9ec0d1" stroke-opacity=".08"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#grid)"/>
+  <path d="M0 389H210l25-55 38 118 42-178 36 135 27-51h82l23-27 30 54 31-83 34 124 27-70h103l24-41 31 85 31-54h125l24-30 24 52 29-108 26 102h152" fill="none" stroke="url(#line)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="72" y="66" width="216" height="38" rx="19" fill="#6de3d4" fill-opacity=".12" stroke="#6de3d4" stroke-opacity=".48"/>
+  <text x="90" y="91" fill="#9ef5e9" font-family="Helvetica Neue,Arial,sans-serif" font-size="16" font-weight="700" letter-spacing="3">OPEN SOURCE PROJECT</text>
+  <text x="70" y="255" fill="#f6f8f9" font-family="Helvetica Neue,Arial,sans-serif" font-size="94" font-weight="700" letter-spacing="-5">AES67 Mac</text>
+  <text x="76" y="317" fill="#c1d1dc" font-family="Helvetica Neue,Arial,sans-serif" font-size="28">Network audio for macOS</text>
+  <text x="76" y="548" fill="#9aafbd" font-family="Helvetica Neue,Arial,sans-serif" font-size="22">CoreAudio driver + Manager</text>
+  <circle cx="1104" cy="90" r="9" fill="#6de3d4"/>
+  <circle cx="1137" cy="90" r="9" fill="#6de3d4" fill-opacity=".45"/>
+  <circle cx="1170" cy="90" r="9" fill="#6de3d4" fill-opacity=".18"/>
+</svg>

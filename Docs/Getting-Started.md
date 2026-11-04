@@ -1,6 +1,6 @@
 # Getting started
 
-AES67 Mac provides a CoreAudio device for sending and receiving AES67 RTP audio over an Ethernet network. It is an experimental community project; it does not implement native Dante discovery, control, or audio protocols.
+AES67 Mac provides a CoreAudio device for sending and receiving AES67 RTP audio over an Ethernet network. It is a community project and does not implement native Dante discovery, control, or audio protocols.
 
 ## Requirements
 

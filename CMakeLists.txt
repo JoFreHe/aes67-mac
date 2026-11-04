@@ -19,7 +19,7 @@ set(CMAKE_OSX_ARCHITECTURES "x86_64;arm64" CACHE STRING "Build architectures")
 project(AES67Driver
     VERSION ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}
     LANGUAGES CXX OBJCXX
-    DESCRIPTION "Experimental AES67 32x32 audio interface for macOS"
+    DESCRIPTION "AES67 32x32 audio interface for macOS"
 )
 
 message(STATUS "AES67 Driver Build #${VERSION_BUILD}")

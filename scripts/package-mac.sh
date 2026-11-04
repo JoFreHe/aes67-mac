@@ -98,4 +98,4 @@ COPYFILE_DISABLE=1 tar --uid 0 --gid 0 --uname root --gname wheel -czf "$OUT/AES
   Installer/scripts Installer/uninstall.sh external/libASPL
 (cd "$OUT" && shasum -a 256 "AES67-Mac-$RELEASE_VERSION-universal.pkg" "AES67-Mac-$RELEASE_VERSION-source.tar.gz" > SHA256SUMS.txt)
 printf '%s\n' "$OUT/AES67-Mac-$RELEASE_VERSION-universal.pkg" \
-  'Local experimental package, ad-hoc signed binaries, no Apple notarization. Configuration changes restart CoreAudio only.'
+  'Local package, ad-hoc signed binaries, no Apple notarization. Configuration changes restart CoreAudio only.'

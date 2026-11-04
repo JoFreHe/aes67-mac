@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f6f3">
+  <meta name="description" content="AES67 Mac connects CoreAudio applications to AES67 network audio over Ethernet. Learn how the driver works, check requirements, and download the macOS installer.">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://jofrehe.github.io/aes67-mac/">
+  <link rel="sitemap" type="application/xml" href="https://jofrehe.github.io/aes67-mac/sitemap.xml">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="AES67 Mac">
+  <meta property="og:title" content="AES67 Mac — Network audio for CoreAudio">
+  <meta property="og:description" content="A CoreAudio driver and Manager for AES67 network audio on macOS. Check requirements, known limitations, and the latest release.">
+  <meta property="og:url" content="https://jofrehe.github.io/aes67-mac/">
+  <meta property="og:image" content="https://jofrehe.github.io/aes67-mac/social-preview.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="AES67 Mac — network audio driver and Manager for macOS">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="AES67 Mac — Network audio for CoreAudio">
+  <meta name="twitter:description" content="A CoreAudio driver and Manager for AES67 network audio on macOS.">
+  <meta name="twitter:image" content="https://jofrehe.github.io/aes67-mac/social-preview.png">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <title>AES67 Mac — Network audio for CoreAudio</title>
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "AES67 Mac",
+      "description": "CoreAudio driver and Manager for sending and receiving AES67 RTP audio over Ethernet on macOS.",
+      "url": "https://jofrehe.github.io/aes67-mac/",
+      "operatingSystem": "macOS",
+      "applicationCategory": "MultimediaApplication",
+      "softwareVersion": "0.2.11",
+      "license": "https://github.com/JoFreHe/aes67-mac/blob/main/LICENSE",
+      "downloadUrl": "https://github.com/JoFreHe/aes67-mac/releases/tag/v0.2.11"
+    }
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <div class="shell nav-row">
+      <a class="brand" href="#top" aria-label="AES67 Mac, back to top">
+        <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
+        <span>AES67 Mac</span>
+      </a>
+      <nav aria-label="Main navigation">
+        <a href="#how-it-works">How it works</a>
+        <a href="#setup">Set up</a>
+        <a href="https://github.com/JoFreHe/aes67-mac">GitHub <span aria-hidden="true">↗</span></a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero shell" id="top" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <div class="product-line"><span class="product-dot" aria-hidden="true"></span> Open-source macOS audio driver</div>
+        <h1 id="hero-title">Your Mac, on the <span class="no-break">AES67 network.</span></h1>
+        <p class="hero-lede">Send and receive multichannel audio between CoreAudio apps and AES67-capable equipment over Ethernet.</p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="https://github.com/JoFreHe/aes67-mac/releases/download/v0.2.11/AES67-Mac-0.2.11-universal.pkg">Download for macOS <span aria-hidden="true">↓</span></a>
+          <a class="text-link" href="#how-it-works">See how it works <span aria-hidden="true">↓</span></a>
+        </div>
+        <p class="hero-note">Built for macOS · Intel and Apple silicon · Ethernet required. <a href="https://github.com/JoFreHe/aes67-mac/releases/tag/v0.2.11">Release details and checksum</a></p>
+      </div>
+
+      <div class="hero-visual" aria-label="Interactive diagram of the AES67 Mac signal path">
+        <div class="visual-topline"><span>Signal path</span><span class="live-indicator"><i></i> AES67 / RTP</span></div>
+        <div class="direction-switch" role="group" aria-label="Choose signal direction">
+          <button type="button" class="active" data-direction="send" aria-pressed="true">Mac → network</button>
+          <button type="button" data-direction="receive" aria-pressed="false">Network → Mac</button>
+        </div>
+        <div class="signal-stage" data-flow="send">
+          <div class="flow-node mac-node">
+            <div class="node-symbol mac-symbol" aria-hidden="true">
+              <svg viewBox="0 0 70 70" fill="none"><rect x="8" y="12" width="54" height="39" rx="5" stroke="currentColor" stroke-width="2"/><path d="M25 58h20M35 51v7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M16 38c3-8 5-8 8 0s5 8 8 0 5-8 8 0 5 8 8 0 5-8 8 0" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+            </div>
+            <strong>Mac</strong><span>CoreAudio app</span>
+          </div>
+          <div class="flow-link" aria-hidden="true"><span class="flow-rail"></span><span class="flow-packet packet-one"></span><span class="flow-packet packet-two"></span><span class="flow-packet packet-three"></span><span class="flow-arrow">→</span></div>
+          <div class="flow-node network-node">
+            <div class="node-symbol network-symbol" aria-hidden="true">
+              <svg viewBox="0 0 70 70" fill="none"><rect x="9" y="20" width="52" height="30" rx="5" stroke="currentColor" stroke-width="2"/><path d="M19 35h8m7 0h8m7 0h3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="20" cy="56" r="2" fill="currentColor"/><circle cx="35" cy="56" r="2" fill="currentColor"/><circle cx="50" cy="56" r="2" fill="currentColor"/></svg>
+            </div>
+            <strong>AES67 device</strong><span>Ethernet network</span>
+          </div>
+        </div>
+        <div class="visual-bottom"><span id="flow-description">Play audio from your Mac to an AES67 receive stream.</span><span class="flow-spec">48 kHz / 24-bit</span></div>
+      </div>
+    </section>
+
+    <div class="spec-strip" aria-label="Key capabilities">
+      <div class="shell specs">
+        <div><strong>32 in + 32 out</strong><span>Configurable CoreAudio channels</span></div>
+        <div><strong>48 kHz / 24-bit</strong><span>AES67 PCM audio</span></div>
+        <div><strong>1 ms</strong><span>Hardware stream packet time</span></div>
+      </div>
+    </div>
+
+    <section class="section shell architecture" id="how-it-works" aria-labelledby="how-title">
+      <div class="section-intro"><p class="section-kicker">The connection</p><h2 id="how-title">Audio moves through a familiar Mac device.</h2><p>Choose AES67 Mac in your audio app. The driver carries audio across your Ethernet network to a compatible AES67 stream, and brings incoming streams back to CoreAudio.</p></div>
+      <div class="steps" aria-label="How the audio connection works">
+        <div class="step"><span class="step-num">01</span><div class="step-icon" aria-hidden="true"><svg viewBox="0 0 48 48" fill="none"><rect x="7" y="10" width="34" height="25" rx="3" stroke="currentColor" stroke-width="1.7"/><path d="M17 40h14m-7-5v5M12 25h5l3-7 6 12 3-5h7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></div><h3>Pick the audio device</h3><p>Your DAW, playback app, or recorder sees a CoreAudio device with separately configurable input and output channels.</p></div>
+        <div class="step"><span class="step-num">02</span><div class="step-icon" aria-hidden="true"><svg viewBox="0 0 48 48" fill="none"><path d="M9 24h30M16 17l-7 7 7 7M32 17l7 7-7 7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><circle cx="24" cy="24" r="3" fill="currentColor"/></svg></div><h3>Configure the stream</h3><p>In AES67 Manager, select Ethernet, discover streams, choose a channel profile, and apply your configuration.</p></div>
+        <div class="step"><span class="step-num">03</span><div class="step-icon" aria-hidden="true"><svg viewBox="0 0 48 48" fill="none"><rect x="6" y="15" width="36" height="22" rx="3" stroke="currentColor" stroke-width="1.7"/><path d="M12 10v5m12-5v5m12-5v5M14 26h4m6 0h4m6 0h1" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="15" cy="32" r="1.5" fill="currentColor"/></svg></div><h3>Route at the other end</h3><p>Set up the peer’s AES67 stream, multicast route, and clock settings on the network equipment itself.</p></div>
+      </div>
+    </section>
+
+    <section class="section dark-section" aria-labelledby="fit-title">
+      <div class="shell fit-grid">
+        <div><p class="section-kicker">Before you begin</p><h2 id="fit-title">Made for AES67 interoperability.</h2><p class="fit-lede">This project speaks AES67 RTP audio. It does not implement native Dante audio, discovery, or device control.</p></div>
+        <div class="fit-details">
+          <div><h3>You need</h3><p>An Ethernet interface, an AES67-capable peer, compatible stream and PTP settings, and administrator access for installation.</p></div>
+          <div><h3>For Dante-equipped devices</h3><p>Enable AES67 interoperability on the device first. Routing and subscriptions remain specific to its card, firmware, and network setup.</p></div>
+          <a href="https://github.com/JoFreHe/aes67-mac/blob/main/Docs/Getting-Started.md">Read the full requirements <span aria-hidden="true">↗</span></a>
+        </div>
+      </div>
+    </section>
+
+    <section class="section shell setup" id="setup" aria-labelledby="setup-title">
+      <div class="section-intro"><p class="section-kicker">Get started</p><h2 id="setup-title">From download to first signal.</h2><p>Start with a known test signal. Verify each direction separately before using both at once.</p></div>
+      <div class="setup-list">
+        <div class="setup-row"><div class="setup-index">1</div><div><h3>Download and verify</h3><p>Get the installer package and <code>SHA256SUMS.txt</code> from the current GitHub release. Compare the package’s SHA-256 checksum before opening it.</p></div></div>
+        <div class="setup-row"><div class="setup-index">2</div><div><h3>Install, then restart</h3><p>The installer is unsigned and the included programs are not notarized. Follow the macOS first-open steps in the guide. Install outside an active audio session; installation restarts CoreAudio. macOS 11 is the deployment target, but runtime compatibility varies by setup.</p></div></div>
+        <div class="setup-row"><div class="setup-index">3</div><div><h3>Connect and test</h3><p>Choose the Ethernet interface and stream in AES67 Manager, select the device in your audio app, then check PTP lock, channel mapping, and audio at both ends.</p></div></div>
+      </div>
+      <div class="setup-actions"><a class="button button-primary" href="https://github.com/JoFreHe/aes67-mac/releases/download/v0.2.11/AES67-Mac-0.2.11-universal.pkg">Download v0.2.11 <span aria-hidden="true">↓</span></a><a class="text-link" href="https://github.com/JoFreHe/aes67-mac/releases/tag/v0.2.11">Checksum and release details <span aria-hidden="true">↗</span></a><a class="text-link" href="https://github.com/JoFreHe/aes67-mac/blob/main/Docs/Getting-Started.md">Installation guide <span aria-hidden="true">↗</span></a></div>
+    </section>
+
+    <section class="section evidence-section" aria-labelledby="evidence-title"><div class="shell evidence-grid"><div><p class="section-kicker">Field notes</p><h2 id="evidence-title">Tested in real setups. Check yours carefully.</h2></div><div><p>Recording and playback have been exercised with a Behringer X32 and X-DANTE. Mac-to-console playback on a Yamaha TF5 AES67-capable setup has also been reported; its card and test conditions are undocumented, and the reverse direction has not been tested.</p><p>Hardware tests have found occasional audio-buffer drops and PTP-lock interruptions. A lost PTP lock pauses transmission. Keep another path available for critical recording or playback.</p><div class="evidence-links"><a href="https://github.com/JoFreHe/aes67-mac/blob/main/Docs/Testing.md">Test guidance <span aria-hidden="true">↗</span></a><a href="https://github.com/JoFreHe/aes67-mac/blob/main/Docs/Troubleshooting.md">Troubleshooting <span aria-hidden="true">↗</span></a></div></div></div></section>
+  </main>
+
+  <footer class="site-footer"><div class="shell footer-main"><div><a class="brand" href="#top"><span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span><span></span></span><span>AES67 Mac</span></a><p>Free and open-source network audio for macOS.</p></div><div class="footer-links"><a href="https://github.com/JoFreHe/aes67-mac">Source code</a><a href="https://github.com/JoFreHe/aes67-mac/releases">Releases</a><a href="https://github.com/JoFreHe/aes67-mac/blob/main/LICENSE">GPL-3.0 license</a></div></div><div class="shell footer-small"><span>Based on maxajbarlow/AES67_macos_Driver.</span><span>Independent project; no manufacturer endorsement.</span></div></footer>
+  <script src="script.js" defer></script>
+</body>
+</html>

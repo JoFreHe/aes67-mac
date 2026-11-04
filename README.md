@@ -1,12 +1,14 @@
 # AES67 Mac
 
-An experimental AES67 network-audio driver and configuration app for macOS. Send and receive audio between CoreAudio applications and compatible AES67 devices over Ethernet.
+An AES67 network-audio driver and configuration app for macOS. Send and receive audio between CoreAudio applications and compatible AES67 devices over Ethernet.
+
+Learn more on the [AES67 Mac website](https://jofrehe.github.io/aes67-mac/).
 
 **This is not Dante Virtual Soundcard and does not implement native Dante.** Dante-equipped devices must support and enable AES67 interoperability. Routing, firmware support, multicast and PTP configuration remain device-specific.
 
 ## Status
 
-This project is under development. Hardware tests have found occasional audio-buffer drops and PTP-lock interruptions. A lost PTP lock pauses transmission. Do not rely on this build as the only recording or playback path for a critical event.
+Hardware tests have found occasional audio-buffer drops and PTP-lock interruptions. A lost PTP lock pauses transmission. Do not rely on this build as the only recording or playback path for a critical event.
 
 | Hardware | Tested direction | Status |
 | --- | --- | --- |
@@ -25,9 +27,7 @@ These are field-test observations, not manufacturer certification or a guarantee
 
 ## Install
 
-Download `AES67-Mac-0.2.11-universal.pkg` and `SHA256SUMS` from the [v0.2.11 release assets](https://github.com/JoFreHe/aes67-mac/releases/tag/v0.2.11). Verify the package checksum and follow the macOS first-open steps in [Install the release package](Docs/Getting-Started.md#install-the-release-package). The package is unsigned; included programs are ad-hoc signed and not Apple-notarized. Install outside an active audio session because installation and applying configuration restart CoreAudio and interrupt audio on the Mac.
-
-The installer package is unsigned. Included programs are ad-hoc signed, not Apple-notarized. Administrator access is required. Follow [Getting started](Docs/Getting-Started.md) for setup and [Troubleshooting](Docs/Troubleshooting.md) for diagnostics.
+Download `AES67-Mac-0.2.11-universal.pkg` and `SHA256SUMS.txt` from the [v0.2.11 release assets](https://github.com/JoFreHe/aes67-mac/releases/tag/v0.2.11). Verify the package checksum and follow the macOS first-open steps in [Getting started](Docs/Getting-Started.md#install-the-release-package). The package is unsigned; included programs are ad-hoc signed and not Apple-notarized. Administrator access is required. Install outside an active audio session because installation and applying configuration restart CoreAudio and interrupt audio on the Mac. See [Troubleshooting](Docs/Troubleshooting.md) for diagnostics.
 
 ## Build from source
 
